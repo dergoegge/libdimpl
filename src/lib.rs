@@ -171,6 +171,7 @@ pub extern "C" fn libafl_main() {
         &mut fuzzer,
         &mut state,
         &mut mgr,
+        std::time::Duration::from_millis(1000),
     )
     .unwrap();
 

@@ -363,7 +363,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
 dependencies = [
  "cfg-if",
- "hashbrown",
+ "hashbrown 0.14.3",
  "lock_api",
  "once_cell",
  "parking_lot_core",
@@ -505,6 +505,12 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+
+[[package]]
+name = "hashbrown"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
@@ -542,12 +548,22 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
+version = "1.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
+dependencies = [
+ "autocfg",
+ "hashbrown 0.12.3",
+]
+
+[[package]]
+name = "indexmap"
 version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "233cf39063f058ea2caae4091bf4a3ef70a653afbc026f5c4a4135d114e3c177"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.14.3",
 ]
 
 [[package]]
@@ -601,15 +617,14 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 [[package]]
 name = "libafl"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a820f5d1bc8e52c719c023bd9b89b93e399cf3164f0a9876391e9d4d2c987c58"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "ahash",
  "backtrace",
  "bincode",
  "c2rust-bitfields",
  "crossterm",
- "hashbrown",
+ "hashbrown 0.14.3",
  "libafl_bolts",
  "libafl_derive",
  "libc",
@@ -635,14 +650,13 @@ dependencies = [
 [[package]]
 name = "libafl_bolts"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "043cd82830f9df1775d97f53c508cf6b4957c88a973da00e09f1e72219ed07f2"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "ahash",
  "backtrace",
  "ctor",
  "erased-serde",
- "hashbrown",
+ "hashbrown 0.14.3",
  "hostname",
  "libafl_derive",
  "libc",
@@ -666,8 +680,7 @@ dependencies = [
 [[package]]
 name = "libafl_cc"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9688fa2ae3e176f6e8c3954f3e9ffe3f1705ed2ad4a0cb31b12498689d635984"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "cc",
  "glob",
@@ -678,8 +691,7 @@ dependencies = [
 [[package]]
 name = "libafl_derive"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c849878dcc707721a16fd5ec2af449301c1da5e3f31682593d60f5e6ccb7568"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "quote",
  "syn 2.0.48",
@@ -688,14 +700,13 @@ dependencies = [
 [[package]]
 name = "libafl_qemu"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "344057f18800b9d11aa6ef3899c4ecc80e0cb0dbb22224c5b8418ecab372b201"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "addr2line",
  "capstone",
  "enum-map",
  "goblin",
- "hashbrown",
+ "hashbrown 0.14.3",
  "libafl",
  "libafl_bolts",
  "libafl_qemu_sys",
@@ -708,19 +719,21 @@ dependencies = [
  "num_enum",
  "paste",
  "rangemap",
+ "rustversion",
  "serde",
+ "serde_yaml",
  "strum",
  "strum_macros",
  "syscall-numbers",
  "thread_local",
+ "toml",
  "typed-arena",
 ]
 
 [[package]]
 name = "libafl_qemu_build"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1b4deca60867b420a2d533ceba572040c7d76c497f061a61826cdc22208d4a1"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "bindgen",
  "cc",
@@ -734,8 +747,7 @@ dependencies = [
 [[package]]
 name = "libafl_qemu_sys"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0703b90678ffa176429b6664e1e6ea908d94a732e1a02c22af40e861202ebb2f"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "libafl_qemu_build",
 ]
@@ -743,8 +755,7 @@ dependencies = [
 [[package]]
 name = "libafl_targets"
 version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdf0ba56577924aa627d7913cfb9de8da62da034ab2d1045aacc142ff422e0bd"
+source = "git+https://github.com/AFLplusplus/LibAFL.git?branch=main#db88412738f690fa961b9c92a3634f78d04bff15"
 dependencies = [
  "bindgen",
  "cc",
@@ -778,6 +789,12 @@ name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+
+[[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
 name = "linux-raw-sys"
@@ -834,9 +851,9 @@ dependencies = [
 
 [[package]]
 name = "memoffset"
-version = "0.7.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
+checksum = "5a634b1c61a95585bd15607c6ab0c4e5b226e695ff2800ba0cdccddf208c406c"
 dependencies = [
  "autocfg",
 ]
@@ -870,15 +887,14 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.26.4"
+version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "598beaf3cc6fdd9a5dfb1630c2800c7acd31df7aaf0f565796fba2b53ca1af1b"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.4.2",
  "cfg-if",
  "libc",
  "memoffset",
- "pin-utils",
 ]
 
 [[package]]
@@ -983,12 +999,6 @@ name = "peeking_take_while"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
-
-[[package]]
-name = "pin-utils"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pkg-config"
@@ -1223,6 +1233,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.8.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "578a7433b776b56a35785ed5ce9a7e777ac0598aac5a6dd1b4b18a307c7fc71b"
+dependencies = [
+ "indexmap 1.9.3",
+ "ryu",
+ "serde",
+ "yaml-rust",
+]
+
+[[package]]
 name = "serial_test"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1373,6 +1395,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml"
+version = "0.4.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "758664fc71a3a69038656bee8b6be6477d2a6c315a6b81f7081f591bffa4111f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "toml_datetime"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1384,7 +1415,7 @@ version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8534fd7f78b5405e860340ad6575217ce99f38d4d5c8f2442cb5ecb50090e1"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.3",
  "toml_datetime",
  "winnow",
 ]
@@ -1694,6 +1725,15 @@ name = "xxhash-rust"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53be06678ed9e83edb1745eb72efc0bbcd7b5c3c35711a860906aed827a13d61"
+
+[[package]]
+name = "yaml-rust"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
+dependencies = [
+ "linked-hash-map",
+]
 
 [[package]]
 name = "zerocopy"
