@@ -52,14 +52,9 @@ struct Options {
 
 pub const MAX_INPUT_SIZE: usize = 1048576; // 1MB
 
-extern "C" {
-    static mut __libdimpl_diff_value: *mut u8;
-}
-
 const MAX_DIFFERENTIAL_VALUE_SIZE: usize = 32;
-
-trait DifferentialValueObserver {
-    fn value(&self) -> &[u8];
+extern "C" {
+    static mut DIFFERENTIAL_VALUE: [u8; MAX_DIFFERENTIAL_VALUE_SIZE];
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -70,12 +65,6 @@ struct QemuDifferentialValueObserver<'a> {
     #[serde(skip_deserializing)]
     emu: Option<&'a Emulator>,
     differential_value_ptr: GuestAddr,
-}
-
-impl DifferentialValueObserver for QemuDifferentialValueObserver<'_> {
-    fn value(&self) -> &[u8] {
-        self.last_value.as_slice()
-    }
 }
 
 impl Named for QemuDifferentialValueObserver<'_> {
@@ -99,12 +88,6 @@ impl<'a> QemuDifferentialValueObserver<'a> {
 struct HostDifferentialValueObserver {
     name: String,
     last_value: Vec<u8>,
-}
-
-impl DifferentialValueObserver for HostDifferentialValueObserver {
-    fn value(&self) -> &[u8] {
-        self.last_value.as_slice()
-    }
 }
 
 impl HostDifferentialValueObserver {
@@ -152,10 +135,8 @@ where
         _exit_kind: &ExitKind,
     ) -> Result<(), libafl_bolts::Error> {
         unsafe {
-            self.last_value.copy_from_slice(std::slice::from_raw_parts(
-                __libdimpl_diff_value,
-                MAX_DIFFERENTIAL_VALUE_SIZE,
-            ));
+            self.last_value
+                .copy_from_slice(DIFFERENTIAL_VALUE.as_slice());
         }
         return Ok(());
     }
@@ -231,19 +212,18 @@ pub extern "C" fn libafl_main() {
 
     // Create two observers (one for each environment) that observe the state of
     // `DIFFERENTIAL_VALUE` after each execution. The host observer simply reads from the in-memory
-    // `__libdimpl_diff_value` which points to `DIFFERENTIAL_VALUE` while the qemu observer reads
-    // the required memory from the emulator.
+    // `DIFFERENTIAL_VALUE`, while the qemu observer reads the required memory from the emulator.
     let host_diff_value_observer = HostDifferentialValueObserver::new("host-diff-value-observer");
     let qemu_diff_value_observer =
         QemuDifferentialValueObserver::new("qemu-diff-value-observer", &emu, diff_value_ptr);
     // Both observers are combined into a `DiffFeedback` that compares the retrieved values from
-    // the two `DifferentialValueObserver` described above.
+    // the two observers described above.
     let mut objective = DiffFeedback::new(
         "diff-value-feedback",
         &host_diff_value_observer,
         &qemu_diff_value_observer,
         |o1, o2| {
-            if o1.value() == o2.value() {
+            if o1.last_value == o2.last_value {
                 DiffResult::Equal
             } else {
                 //println!(
