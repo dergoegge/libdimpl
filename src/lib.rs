@@ -1,6 +1,6 @@
 use clap::Parser;
 use libafl::{
-    corpus::{InMemoryCorpus, NopCorpus},
+    corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
     events::SimpleEventManager,
     executors::{DiffExecutor, ExitKind, InProcessExecutor},
     feedbacks::{differential::DiffResult, DiffFeedback, MaxMapFeedback},
@@ -12,7 +12,7 @@ use libafl::{
     observers::{HitcountsMapObserver, Observer, StdMapObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::StdMutationalStage,
-    state::{HasMetadata, StdState},
+    state::{HasCorpus, HasMetadata, StdState},
     Fuzzer,
 };
 use libafl_bolts::{
@@ -30,21 +30,18 @@ use libafl_targets::{
 };
 use std::alloc::{alloc_zeroed, Layout};
 use std::env;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 struct Options {
-    //#[arg(
-    //    long = "seeds",
-    //    help = "Seed corpus directory (has to be non-empty)",
-    //    required = true
-    //)]
-    //seeds: String,
-    //#[arg(
-    //    long = "solutions",
-    //    help = "Directory in which solutions (crashes, timeouts, differential finds) will be stored",
-    //    required = true
-    //)]
-    //solutions: String,
+    #[arg(long = "seeds", help = "Seed corpus directory", required = true)]
+    seeds: String,
+    #[arg(
+        long = "solutions",
+        help = "Directory in which solutions (differential finds) will be stored",
+        required = true
+    )]
+    solutions: String,
     #[arg(long = "tokens", help = "Tokens file")]
     tokens: Option<String>,
     #[arg(help = "Secondary binary to fuzz against under qemu")]
@@ -260,10 +257,11 @@ pub extern "C" fn libafl_main() {
     )
     .unwrap();
 
+    let seed_dir_path = PathBuf::from(options.seeds);
     let mut state = StdState::new(
         StdRand::with_seed(current_nanos()),
-        InMemoryCorpus::new(),
-        InMemoryCorpus::new(),
+        InMemoryOnDiskCorpus::new(&seed_dir_path).unwrap(),
+        OnDiskCorpus::new(PathBuf::from(options.solutions)).unwrap(),
         &mut feedback,
         &mut objective,
     )
@@ -347,9 +345,8 @@ pub extern "C" fn libafl_main() {
         tuple_list!(swap_observer, combined_edge_observer),
     );
 
-    // Simple havoc mutator
+    // Load tokens from file (if provided)
     let mut tokens = Tokens::new();
-
     if let Some(tokens_file) = &options.tokens {
         tokens.add_from_file(tokens_file).unwrap();
         state.add_metadata(tokens);
@@ -365,11 +362,17 @@ pub extern "C" fn libafl_main() {
     }
 
     if state.must_load_initial_inputs() {
-        // We can't start from an empty corpus, so just generate a few random inputs.
-        let mut generator = RandBytesGenerator::new(32);
         state
-            .generate_initial_inputs(&mut fuzzer, &mut executor, &mut generator, &mut mgr, 8)
-            .expect("Failed to generate the initial corpus");
+            .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &[seed_dir_path])
+            .expect("Failed to load inputs from disk");
+
+        if state.corpus().count() == 0 {
+            // We can't start from an empty corpus, so just generate a few random inputs.
+            let mut generator = RandBytesGenerator::new(32);
+            state
+                .generate_initial_inputs(&mut fuzzer, &mut executor, &mut generator, &mut mgr, 8)
+                .expect("Failed to generate the initial corpus");
+        }
     }
 
     fuzzer
