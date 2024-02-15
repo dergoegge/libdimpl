@@ -5,6 +5,19 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+## Set emulator to big endian
+be = ["libafl_qemu/be"]
+
+#! ## Mutually exclusive architectures
+arm = ["libafl_qemu/arm"]
+x86_64 = ["libafl_qemu/x86_64"]
+i386 = ["libafl_qemu/i386"]
+aarch64 = ["libafl_qemu/aarch64"]
+mips = ["libafl_qemu/mips"]
+ppc = ["libafl_qemu/ppc", "be"]
+hexagon = ["libafl_qemu/hexagon"]
+
 [dependencies]
 clap = { version = "4.3.0", features = ["derive", "string"] }
 libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", branch = "main" }
@@ -12,7 +25,7 @@ libafl_bolts = { git = "https://github.com/AFLplusplus/LibAFL.git", branch = "ma
 libafl_cc = { git = "https://github.com/AFLplusplus/LibAFL.git", branch = "main" }
 libafl_qemu = { git = "https://github.com/AFLplusplus/LibAFL.git", branch = "main", features = ["usermode"] }
 libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", branch = "main", features = ["pointer_maps", "sancov_pcguard_hitcounts", "libfuzzer", "sancov_cmplog"] }
-
+serde = "1.0.196"
 
 [lib]
 name = "dimpl"

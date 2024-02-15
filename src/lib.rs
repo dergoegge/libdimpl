@@ -3,19 +3,24 @@ use libafl::{
     corpus::{InMemoryCorpus, NopCorpus},
     events::SimpleEventManager,
     executors::{DiffExecutor, ExitKind, InProcessExecutor},
-    feedbacks::MaxMapFeedback,
+    feedbacks::{differential::DiffResult, DiffFeedback, MaxMapFeedback},
     fuzzer::StdFuzzer,
     generators::RandBytesGenerator,
-    inputs::{BytesInput, HasTargetBytes},
+    inputs::{BytesInput, HasTargetBytes, UsesInput},
     monitors::SimpleMonitor,
-    mutators::{havoc_mutations, StdScheduledMutator},
-    observers::{HitcountsMapObserver, StdMapObserver},
-    schedulers::QueueScheduler,
+    mutators::{havoc_mutations, tokens_mutations, StdScheduledMutator, Tokens},
+    observers::{HitcountsMapObserver, Observer, StdMapObserver},
+    schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::StdMutationalStage,
-    state::StdState,
+    state::{HasMetadata, StdState},
     Fuzzer,
 };
-use libafl_bolts::{current_nanos, rands::StdRand, tuples::tuple_list, AsSlice};
+use libafl_bolts::{
+    current_nanos,
+    rands::StdRand,
+    tuples::{tuple_list, Merge},
+    AsSlice, Named,
+};
 use libafl_qemu::{
     edges::edges_max_num, edges::QemuEdgeCoverageClassicHelper, elf::EasyElf, ArchExtras,
     CallingConvention, Emulator, GuestAddr, GuestReg, MmapPerms, QemuExecutor, QemuHooks, Regs,
@@ -40,6 +45,8 @@ struct Options {
     //    required = true
     //)]
     //solutions: String,
+    #[arg(long = "tokens", help = "Tokens file")]
+    tokens: Option<String>,
     #[arg(help = "Secondary binary to fuzz against under qemu")]
     secondary: String,
     #[arg(last = true, help = "Arguments passed to the target")]
@@ -47,6 +54,115 @@ struct Options {
 }
 
 pub const MAX_INPUT_SIZE: usize = 1048576; // 1MB
+
+extern "C" {
+    static mut __libdimpl_diff_value: *mut u8;
+}
+
+const MAX_DIFFERENTIAL_VALUE_SIZE: usize = 1024;
+
+trait DifferentialValueObserver {
+    fn value(&self) -> &[u8];
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct QemuDifferentialValueObserver<'a> {
+    name: String,
+    last_value: Vec<u8>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    emu: Option<&'a Emulator>,
+    differential_value_ptr: GuestAddr,
+}
+
+impl DifferentialValueObserver for QemuDifferentialValueObserver<'_> {
+    fn value(&self) -> &[u8] {
+        self.last_value.as_slice()
+    }
+}
+
+impl Named for QemuDifferentialValueObserver<'_> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl<'a> QemuDifferentialValueObserver<'a> {
+    fn new(name: &str, emu: &'a Emulator, differential_value_ptr: GuestAddr) -> Self {
+        Self {
+            name: String::from(name),
+            last_value: vec![0u8; MAX_DIFFERENTIAL_VALUE_SIZE],
+            emu: Some(emu),
+            differential_value_ptr,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct HostDifferentialValueObserver {
+    name: String,
+    last_value: Vec<u8>,
+}
+
+impl DifferentialValueObserver for HostDifferentialValueObserver {
+    fn value(&self) -> &[u8] {
+        self.last_value.as_slice()
+    }
+}
+
+impl HostDifferentialValueObserver {
+    fn new(name: &str) -> Self {
+        Self {
+            name: String::from(name),
+            last_value: vec![0u8; MAX_DIFFERENTIAL_VALUE_SIZE],
+        }
+    }
+}
+
+impl Named for HostDifferentialValueObserver {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl<S> Observer<S> for QemuDifferentialValueObserver<'_>
+where
+    S: UsesInput,
+{
+    fn post_exec(
+        &mut self,
+        _state: &mut S,
+        _input: &S::Input,
+        _exit_kind: &ExitKind,
+    ) -> Result<(), libafl_bolts::Error> {
+        unsafe {
+            self.emu
+                .unwrap()
+                .read_mem(self.differential_value_ptr, self.last_value.as_mut_slice());
+        }
+        return Ok(());
+    }
+}
+
+impl<S> Observer<S> for HostDifferentialValueObserver
+where
+    S: UsesInput,
+{
+    fn post_exec(
+        &mut self,
+        _state: &mut S,
+        _input: &S::Input,
+        _exit_kind: &ExitKind,
+    ) -> Result<(), libafl_bolts::Error> {
+        unsafe {
+            self.last_value.copy_from_slice(std::slice::from_raw_parts(
+                __libdimpl_diff_value,
+                MAX_DIFFERENTIAL_VALUE_SIZE,
+            ));
+        }
+        return Ok(());
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn libafl_main() {
@@ -57,15 +173,21 @@ pub extern "C" fn libafl_main() {
 
     // Setup QEMU
     env::remove_var("LD_LIBRARY_PATH");
+    println!("{:?}", &options.args);
     let env: Vec<(String, String)> = env::vars().collect();
     let emu = Emulator::new(&options.args, &env).unwrap();
 
+    println!("{}", emu.binary_path());
     let mut elf_buffer = Vec::new();
     let elf = EasyElf::from_file(emu.binary_path(), &mut elf_buffer).unwrap();
 
     let test_one_input_ptr = elf
         .resolve_symbol("LLVMFuzzerTestOneInput", emu.load_addr())
         .expect("Symbol LLVMFuzzerTestOneInput not found");
+
+    let diff_value_ptr = elf
+        .resolve_symbol("DIFFERENTIAL_VALUE", emu.load_addr())
+        .expect("Symbol DIFFERENTIAL_VALUE not found");
 
     // Emulate until `LLVMFuzzerTestOneInput` is hit
     emu.entry_break(test_one_input_ptr);
@@ -110,19 +232,44 @@ pub extern "C" fn libafl_main() {
     };
     let mut feedback = MaxMapFeedback::tracking(&combined_edge_observer, true, false);
 
-    // TODO differential objectives
-    let mut objective = ();
+    // Create two observers (one for each environment) that observe the state of
+    // `DIFFERENTIAL_VALUE` after each execution. The host observer simply reads from the in-memory
+    // `__libdimpl_diff_value` which points to `DIFFERENTIAL_VALUE` while the qemu observer reads
+    // the required memory from the emulator.
+    let host_diff_value_observer = HostDifferentialValueObserver::new("host-diff-value-observer");
+    let qemu_diff_value_observer =
+        QemuDifferentialValueObserver::new("qemu-diff-value-observer", &emu, diff_value_ptr);
+    // Both observers are combined into a `DiffFeedback` that compares the retrieved values from
+    // the two `DifferentialValueObserver` described above.
+    let mut objective = DiffFeedback::new(
+        "diff-value-feedback",
+        &host_diff_value_observer,
+        &qemu_diff_value_observer,
+        |o1, o2| {
+            if o1.value() == o2.value() {
+                DiffResult::Equal
+            } else {
+                //println!(
+                //    "{} != {}",
+                //    std::str::from_utf8(o1.value()).unwrap(),
+                //    std::str::from_utf8(o2.value()).unwrap()
+                //);
+                DiffResult::Diff
+            }
+        },
+    )
+    .unwrap();
 
     let mut state = StdState::new(
         StdRand::with_seed(current_nanos()),
         InMemoryCorpus::new(),
-        NopCorpus::new(),
+        InMemoryCorpus::new(),
         &mut feedback,
         &mut objective,
     )
     .unwrap();
 
-    let scheduler = QueueScheduler::new();
+    let scheduler = IndexesLenTimeMinimizerScheduler::new(QueueScheduler::new());
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
     let mut hooks = QemuHooks::new(
@@ -167,7 +314,7 @@ pub extern "C" fn libafl_main() {
     let qemu_executor = QemuExecutor::new(
         &mut hooks,
         &mut qemu_harness,
-        tuple_list!(qemu_edges_observer),
+        tuple_list!(qemu_edges_observer, qemu_diff_value_observer),
         &mut fuzzer,
         &mut state,
         &mut mgr,
@@ -186,7 +333,7 @@ pub extern "C" fn libafl_main() {
 
     let host_executor = InProcessExecutor::new(
         &mut host_harness,
-        tuple_list!(host_edges_observer),
+        tuple_list!(host_edges_observer, host_diff_value_observer),
         &mut fuzzer,
         &mut state,
         &mut mgr,
@@ -201,7 +348,14 @@ pub extern "C" fn libafl_main() {
     );
 
     // Simple havoc mutator
-    let mutator = StdScheduledMutator::new(havoc_mutations());
+    let mut tokens = Tokens::new();
+
+    if let Some(tokens_file) = &options.tokens {
+        tokens.add_from_file(tokens_file).unwrap();
+        state.add_metadata(tokens);
+    }
+
+    let mutator = StdScheduledMutator::new(havoc_mutations().merge(tokens_mutations()));
     let mut stages = tuple_list!(StdMutationalStage::new(mutator));
 
     // Initialize host in-process harness (QEMU harness is expected to that on its own).

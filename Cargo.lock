@@ -390,6 +390,7 @@ dependencies = [
  "libafl_cc",
  "libafl_qemu",
  "libafl_targets",
+ "serde",
 ]
 
 [[package]]
