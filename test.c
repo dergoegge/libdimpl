@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-uint8_t DIFFERENTIAL_VALUE[1024];
+uint8_t DIFFERENTIAL_VALUE[32];
 uint8_t *__libdimpl_diff_value = DIFFERENTIAL_VALUE;
 
 int LLVMFuzzerInitialize(int *argc, char ***argv) { return 0; }

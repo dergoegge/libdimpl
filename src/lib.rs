@@ -59,7 +59,7 @@ extern "C" {
     static mut __libdimpl_diff_value: *mut u8;
 }
 
-const MAX_DIFFERENTIAL_VALUE_SIZE: usize = 1024;
+const MAX_DIFFERENTIAL_VALUE_SIZE: usize = 32;
 
 trait DifferentialValueObserver {
     fn value(&self) -> &[u8];
