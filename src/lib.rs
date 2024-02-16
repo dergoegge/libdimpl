@@ -346,12 +346,15 @@ pub extern "C" fn libafl_main() {
             .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &[seed_dir_path])
             .expect("Failed to load inputs from disk");
 
+        println!("Loaded {} seeds from disk", state.corpus().count());
+
         if state.corpus().count() == 0 {
             // We can't start from an empty corpus, so just generate a few random inputs.
             let mut generator = RandBytesGenerator::new(32);
             state
                 .generate_initial_inputs(&mut fuzzer, &mut executor, &mut generator, &mut mgr, 8)
                 .expect("Failed to generate the initial corpus");
+            println!("Generated {} seeds randomly", state.corpus().count());
         }
     }
 
