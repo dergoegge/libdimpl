@@ -352,7 +352,7 @@ pub extern "C" fn libafl_main() {
             // We can't start from an empty corpus, so just generate a few random inputs.
             let mut generator = RandBytesGenerator::new(32);
             state
-                .generate_initial_inputs(&mut fuzzer, &mut executor, &mut generator, &mut mgr, 8)
+                .generate_initial_inputs(&mut fuzzer, &mut executor, &mut generator, &mut mgr, 1024)
                 .expect("Failed to generate the initial corpus");
             println!("Generated {} seeds randomly", state.corpus().count());
         }
