@@ -116,6 +116,8 @@ impl Named for HostDifferentialValueObserver {
     }
 }
 
+// After each execution the `QemuDifferentialValueObserver` will read the differential value from
+// emulator's memory.
 impl<S> Observer<S> for QemuDifferentialValueObserver<'_>
 where
     S: UsesInput,
@@ -135,6 +137,8 @@ where
     }
 }
 
+// After each execution the `HostDifferentialValueObserver` will read and store the differential
+// value from `DIFFERENTIAL_VALUE`.
 impl<S> Observer<S> for HostDifferentialValueObserver
 where
     S: UsesInput,
