@@ -354,8 +354,7 @@ pub extern "C" fn libafl_main() {
     let mut stages = tuple_list!(StdMutationalStage::new(mutator));
 
     // Initialize host in-process harness (QEMU harness is expected to that on its own).
-    let args: Vec<String> = env::args().collect();
-    if libfuzzer_initialize(&args) == -1 {
+    if libfuzzer_initialize(&options.args[2..]) == -1 {
         println!("Warning: LLVMFuzzerInitialize failed with -1");
     }
 
