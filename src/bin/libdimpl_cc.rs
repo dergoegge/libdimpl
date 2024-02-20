@@ -25,6 +25,7 @@ pub fn main() {
             .expect("Failed to parse the command line")
             .add_link_arg("-lglib-2.0")
             .add_link_arg("-lgmodule-2.0")
+            .add_link_arg("-lz")
             .link_staticlib(&dir, "dimpl")
             .add_arg("-fsanitize-coverage=trace-pc-guard")
             .run()
