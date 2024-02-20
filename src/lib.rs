@@ -34,6 +34,11 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 struct Options {
+    #[arg(
+        long = "log-diff-values",
+        help = "Log differential values for solutions",
+    )]
+    log_diff_values: bool,
     #[arg(long = "seeds", help = "Seed corpus directory", required = true)]
     seeds: String,
     #[arg(
@@ -226,11 +231,14 @@ pub extern "C" fn libafl_main() {
             if o1.last_value == o2.last_value {
                 DiffResult::Equal
             } else {
-                //println!(
-                //    "{} != {}",
-                //    std::str::from_utf8(o1.value()).unwrap(),
-                //    std::str::from_utf8(o2.value()).unwrap()
-                //);
+                if options.log_diff_values {
+                    println!(
+                        "{:x?} != {:x?}",
+                        o1.last_value.as_slice(),
+                        o2.last_value.as_slice()
+                    );
+                }
+
                 DiffResult::Diff
             }
         },
