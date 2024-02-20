@@ -58,9 +58,15 @@ struct Options {
 pub const MAX_INPUT_SIZE: usize = 1048576; // 1MB
 
 const MAX_DIFFERENTIAL_VALUE_SIZE: usize = 32;
-extern "C" {
-    static mut DIFFERENTIAL_VALUE: [u8; MAX_DIFFERENTIAL_VALUE_SIZE];
-}
+// In-process differential value used for comparison with the qemu differential value.
+static mut DIFFERENTIAL_VALUE: [u8; MAX_DIFFERENTIAL_VALUE_SIZE] =
+    [0u8; MAX_DIFFERENTIAL_VALUE_SIZE];
+// Export a pointer to the in-process differential value so that the harness can write to it.
+//
+// Note: An alternative (maybe better) approach would be to let the harness define the symbol and
+// have this library link to it with `extern "C"`.
+#[no_mangle]
+pub static mut DIFFERENTIAL_VALUE_PTR: *mut u8 = unsafe { DIFFERENTIAL_VALUE.as_mut_ptr() };
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct QemuDifferentialValueObserver<'a> {
