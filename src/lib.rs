@@ -1,6 +1,7 @@
 use clap::Parser;
 use libafl::{
     corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
+    events::ProgressReporter,
     events::SimpleEventManager,
     executors::{DiffExecutor, ExitKind, InProcessExecutor},
     feedbacks::{differential::DiffResult, DiffFeedback, MaxMapFeedback},
@@ -12,7 +13,7 @@ use libafl::{
     observers::{HitcountsMapObserver, Observer, StdMapObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::StdMutationalStage,
-    state::{HasCorpus, HasMetadata, StdState},
+    state::{HasCorpus, HasMetadata, HasSolutions, StdState},
     Fuzzer,
 };
 use libafl_bolts::{
@@ -26,7 +27,8 @@ use libafl_qemu::{
     CallingConvention, Emulator, GuestAddr, GuestReg, MmapPerms, QemuExecutor, QemuHooks, Regs,
 };
 use libafl_targets::{
-    libfuzzer_initialize, libfuzzer_test_one_input, DifferentialAFLMapSwapObserver,
+    libfuzzer_initialize, libfuzzer_test_one_input, std_edges_map_observer,
+    DifferentialAFLMapSwapObserver,
 };
 use std::alloc::{alloc_zeroed, Layout};
 use std::env;
@@ -36,9 +38,14 @@ use std::path::PathBuf;
 struct Options {
     #[arg(
         long = "log-diff-values",
-        help = "Log differential values for solutions",
+        help = "Log differential values for solutions"
     )]
     log_diff_values: bool,
+    #[arg(
+        long = "ignore-solutions",
+        help = "Keep fuzzing even if a solution has already been found"
+    )]
+    ignore_solutions: bool,
     #[arg(long = "seeds", help = "Seed corpus directory", required = true)]
     seeds: String,
     #[arg(
@@ -194,36 +201,27 @@ pub extern "C" fn libafl_main() {
 
     let stack_ptr: GuestAddr = emu.read_reg(Regs::Sp).unwrap();
 
-    // Allocate the edge map
+    // Allocate an edge map for the qemu executions. This will be unused since we only care about
+    // the coverage in the host execution (for now). We still need to have an edge map and observer
+    // for the differential map swap observer.
     let num_edges: usize = edges_max_num();
-    let edge_layout = Layout::from_size_align(num_edges * 2, 64).unwrap();
-    let edges =
-        unsafe { core::slice::from_raw_parts_mut(alloc_zeroed(edge_layout), num_edges * 2) };
-
-    // We create a large edge map that is split into two smaller edge maps of equal size
-    // (qemu-edges and host-edges). As the naming suggests, they individually collect coverage
-    // feedback for the host execution and the qemu execution.
-    let mut qemu_edges_observer =
+    let edge_layout = Layout::from_size_align(num_edges, 64).unwrap();
+    let edges = unsafe { core::slice::from_raw_parts_mut(alloc_zeroed(edge_layout), num_edges) };
+    let mut unused_qemu_edges_observer =
         unsafe { StdMapObserver::from_mut_ptr("qemu-edges", edges.as_mut_ptr(), num_edges) };
-    let mut host_edges_observer = unsafe {
-        StdMapObserver::from_mut_ptr("host-edges", edges.as_mut_ptr().add(num_edges), num_edges)
-    };
+
+    let mut host_edges_observer = unsafe { std_edges_map_observer("host-edges") };
 
     // We need to swap libafl's edge map pointer in between the host and qemu executions to ensure
     // that coverage is collected into the respective maps. Libafl's DifferentialAFLMapSwapObserver
     // serves that purpose out of the box.
-    let swap_observer =
-        DifferentialAFLMapSwapObserver::new(&mut qemu_edges_observer, &mut host_edges_observer);
+    let swap_observer = DifferentialAFLMapSwapObserver::new(
+        &mut unused_qemu_edges_observer,
+        &mut host_edges_observer,
+    );
 
-    // We use the combined edge map for coverage feedback in this differential fuzzer.
-    let combined_edge_observer = unsafe {
-        HitcountsMapObserver::new(StdMapObserver::differential_from_mut_ptr(
-            "combined-edges",
-            edges.as_mut_ptr(),
-            num_edges * 2,
-        ))
-    };
-    let mut feedback = MaxMapFeedback::tracking(&combined_edge_observer, true, false);
+    let host_hitcount_observer = HitcountsMapObserver::new(host_edges_observer);
+    let mut feedback = MaxMapFeedback::tracking(&host_hitcount_observer, true, false);
 
     // Create two observers (one for each environment) that observe the state of
     // `DIFFERENTIAL_VALUE` after each execution. The host observer simply reads from the in-memory
@@ -310,7 +308,7 @@ pub extern "C" fn libafl_main() {
     let qemu_executor = QemuExecutor::new(
         &mut hooks,
         &mut qemu_harness,
-        tuple_list!(qemu_edges_observer, qemu_diff_value_observer),
+        tuple_list!(qemu_diff_value_observer),
         &mut fuzzer,
         &mut state,
         &mut mgr,
@@ -329,7 +327,7 @@ pub extern "C" fn libafl_main() {
 
     let host_executor = InProcessExecutor::new(
         &mut host_harness,
-        tuple_list!(host_edges_observer, host_diff_value_observer),
+        tuple_list!(host_hitcount_observer, host_diff_value_observer),
         &mut fuzzer,
         &mut state,
         &mut mgr,
@@ -337,11 +335,7 @@ pub extern "C" fn libafl_main() {
     .unwrap();
 
     // Combine both executors into a `DiffExecutor`.
-    let mut executor = DiffExecutor::new(
-        host_executor,
-        qemu_executor,
-        tuple_list!(swap_observer, combined_edge_observer),
-    );
+    let mut executor = DiffExecutor::new(host_executor, qemu_executor, tuple_list!(swap_observer));
 
     // Load tokens from file (if provided)
     let mut tokens = Tokens::new();
@@ -375,7 +369,16 @@ pub extern "C" fn libafl_main() {
         }
     }
 
-    fuzzer
-        .fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)
-        .expect("Error in the fuzzing loop");
+    loop {
+        mgr.maybe_report_progress(&mut state, std::time::Duration::from_secs(15))
+            .unwrap();
+        fuzzer
+            .fuzz_one(&mut stages, &mut executor, &mut state, &mut mgr)
+            .expect("Error in the fuzzing loop");
+
+        if !options.ignore_solutions && state.solutions().count() != 0 {
+            eprintln!("Found differential solution");
+            std::process::exit(71);
+        }
+    }
 }
