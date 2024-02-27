@@ -166,18 +166,18 @@ where
 
 #[no_mangle]
 pub extern "C" fn libafl_main() {
-    let mut options = Options::parse();
+    let options = Options::parse();
     let program = env::args().next().unwrap();
-    options.args.insert(0, options.secondary);
-    options.args.insert(0, program);
+
+    let mut qemu_args = options.args.clone();
+    qemu_args.insert(0, options.secondary);
+    qemu_args.insert(0, program.clone());
 
     // Setup QEMU
     env::remove_var("LD_LIBRARY_PATH");
-    println!("{:?}", &options.args);
     let env: Vec<(String, String)> = env::vars().collect();
-    let emu = Emulator::new(&options.args, &env).unwrap();
+    let emu = Emulator::new(&qemu_args, &env).unwrap();
 
-    println!("{}", emu.binary_path());
     let mut elf_buffer = Vec::new();
     let elf = EasyElf::from_file(emu.binary_path(), &mut elf_buffer).unwrap();
 
@@ -348,7 +348,9 @@ pub extern "C" fn libafl_main() {
     let mut stages = tuple_list!(StdMutationalStage::new(mutator));
 
     // Initialize host in-process harness (QEMU harness is expected to that on its own).
-    if libfuzzer_initialize(&options.args[2..]) == -1 {
+    let mut host_args = options.args.clone();
+    host_args.insert(0, program);
+    if libfuzzer_initialize(&host_args) == -1 {
         println!("Warning: LLVMFuzzerInitialize failed with -1");
     }
 
